@@ -1,0 +1,734 @@
+<title>SafeRoute Rail Router</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: signalling-room workspace. Header, one sticky control bar, tabbed panels; map on the left, readouts on the right. */
+:root{
+  --bg:#EDF0F4; --surface:#FFFFFF; --surface-2:#F4F6F9; --fg:#0F2038; --fg-2:#3C4C63; --muted:#66758B;
+  --line:#D3DAE4; --accent:#1B5FC4; --accent-ink:#FFFFFF; --route:#1B5FC4; --visit:#0E8F8F;
+  --good:#1E8E4E; --warn:#A86B00; --crit:#C62E2E; --edge:#9AA7B8;
+  --display:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1524; --surface:#121F33; --surface-2:#0F1B2D; --fg:#E6EDF7; --fg-2:#B4C2D6; --muted:#8A9BB3;
+    --line:#25344D; --accent:#6BAAFF; --accent-ink:#08121F; --route:#5CA3FF; --visit:#3CC8C8;
+    --good:#4CC585; --warn:#E0B04C; --crit:#FF6B6B; --edge:#4A5C78; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1524; --surface:#121F33; --surface-2:#0F1B2D; --fg:#E6EDF7; --fg-2:#B4C2D6; --muted:#8A9BB3;
+  --line:#25344D; --accent:#6BAAFF; --accent-ink:#08121F; --route:#5CA3FF; --visit:#3CC8C8;
+  --good:#4CC585; --warn:#E0B04C; --crit:#FF6B6B; --edge:#4A5C78; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:400 14px/1.5 var(--body);padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;gap:16px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+h1{font:700 26px/1.05 var(--display);letter-spacing:-.01em;margin:0}
+h2{font:600 15px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;margin:0 0 10px;color:var(--fg-2)}
+h3{font:600 14px/1.3 var(--body);margin:0 0 6px}
+.sub{color:var(--muted);margin:4px 0 0;max-width:78ch;font-size:13.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font:500 11px var(--mono);padding:3px 8px;border:1px solid var(--line);border-radius:4px;color:var(--fg-2);background:var(--surface)}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;min-height:32px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
+.ctl{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end}
+.f{display:grid;gap:3px;min-width:0}
+.f label,.f legend,.lab-t{font:600 11px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+select{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:150px;max-width:100%}
+#swap{padding:6px 10px}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{font:500 13px var(--body);text-transform:none;letter-spacing:0;color:var(--fg-2);padding:6px 10px;cursor:pointer;background:var(--surface-2);border-right:1px solid var(--line)}
+.seg label:last-of-type{border-right:0}
+.seg input:checked+label{background:var(--accent);color:var(--accent-ink)}
+.seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:-2px}
+.lam{min-width:200px;flex:1 1 200px}
+.lam input{width:100%;accent-color:var(--accent)}
+output{font:500 12px var(--mono);color:var(--fg);text-transform:none;letter-spacing:0}
+.ends{display:flex;justify-content:space-between;gap:8px;font:400 11px var(--mono);color:var(--muted)}
+.ends .fm{color:var(--fg-2)}
+.presets{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%;align-items:center}
+.presets .btn{padding:4px 10px;font-size:13px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 12px;min-height:40px;font:600 14px var(--display);letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.grid2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+.stack{display:grid;gap:14px;min-width:0}
+.mapbox svg{display:block;width:100%;height:auto;max-height:calc(100vh - 190px);background:var(--surface-2);border-radius:6px}
+.hint{color:var(--muted);font-size:13px;margin:10px 0 0}
+.legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:12px;color:var(--fg-2)}
+.grad{display:inline-block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(135 65% 46%),hsl(70 65% 46%),hsl(0 65% 46%));vertical-align:middle;margin:0 6px}
+.key{display:inline-flex;align-items:center;gap:6px}
+.key i{display:inline-block;width:22px;height:0;border-top:4px solid var(--route)}
+.key i.d{border-top:2px dashed var(--fg)}
+.key i.b{border-top:4px solid var(--crit)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rt{border:1px solid var(--line);border-radius:6px;padding:12px;min-width:0}
+.rt.sel{border-color:var(--route);box-shadow:inset 0 0 0 1px var(--route)}
+.m{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dotted var(--line)}
+.m:last-child{border-bottom:0}
+.m span:first-child{color:var(--muted)}
+.m span:last-child{font:500 13px var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.pill{display:inline-block;font:600 11px var(--mono);padding:1px 7px;border-radius:99px;border:1px solid currentColor}
+.pill.good{color:var(--good)}.pill.warn{color:var(--warn)}.pill.crit{color:var(--crit)}
+.delta{margin:12px 0 0;padding:10px 12px;border-radius:6px;background:var(--surface-2);font-size:13.5px}
+.head{padding:2px 0 14px}
+.head .big{font:700 26px/1.15 var(--display);letter-spacing:-.005em;margin:0;text-wrap:balance}
+.head .big em{font-style:normal;color:var(--accent)}
+.head .via{margin:6px 0 0;color:var(--fg-2);font-size:13.5px}
+.segs{display:flex;gap:6px;flex-wrap:wrap}
+.segb{display:inline-flex;gap:6px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:3px 10px;font-size:13px}
+.segb:hover{border-color:var(--crit)}
+.segb b{color:var(--crit);font-weight:700}
+.segb.off{border-style:dashed;color:var(--muted)}
+.segb.off b{color:var(--good)}
+.alt{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px}
+.alt[aria-pressed="true"]{border-color:var(--route);box-shadow:inset 0 0 0 1px var(--route)}
+.alt .p{font:400 12px var(--mono);color:var(--fg-2);overflow-wrap:anywhere}
+.alt .n{font:700 13px var(--display);color:var(--muted)}
+.alt .s{font:500 12px var(--mono);text-align:right;white-space:nowrap}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font:600 11px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.race{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ctr{display:flex;gap:16px;flex-wrap:wrap;font:500 13px var(--mono);margin:8px 0 0}
+.ctr b{font:700 22px var(--display);color:var(--fg)}
+.bar{display:grid;grid-template-columns:130px minmax(0,1fr) 70px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
+.bar .t{height:16px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--accent)}
+.bar .t i.v{background:var(--visit)}.bar .t i.g{background:var(--edge)}
+.bar .v{font:500 13px var(--mono);text-align:right}
+.test{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);align-items:start}
+.test .ok{color:var(--good);font-weight:700}.test .no{color:var(--crit);font-weight:700}
+.test small{color:var(--muted);display:block;font-family:var(--mono);font-size:12px}
+.test .ms{font:400 12px var(--mono);color:var(--muted)}
+.kit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.beat{display:grid;grid-template-columns:62px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.beat:last-child{border-bottom:0}
+.beat .tm{font:600 13px var(--mono);color:var(--accent)}
+.beat p{margin:2px 0 0;color:var(--fg-2)}
+details{border-bottom:1px solid var(--line);padding:8px 0}
+summary{cursor:pointer;font-weight:600}
+details p{margin:6px 0 0;color:var(--fg-2)}
+.note{border-left:3px solid var(--warn);background:var(--surface-2);padding:10px 12px;border-radius:0 6px 6px 0;font-size:13.5px}
+.note ul{margin:6px 0 0;padding-left:18px}
+code{font:400 12.5px var(--mono);background:var(--surface-2);padding:1px 5px;border-radius:3px}
+footer{color:var(--muted);font-size:12.5px;max-width:90ch}
+/* SVG */
+svg text{font-family:var(--mono)}
+.lbl{font-size:10.5px;font-weight:500;fill:var(--fg-2);paint-order:stroke;stroke:var(--surface-2);stroke-width:3.5px;stroke-linejoin:round;pointer-events:none}
+.lbl.nm{font-size:12px;font-weight:600;fill:var(--fg);font-family:var(--body)}
+.ord{font-size:9px;font-weight:700;fill:var(--accent-ink);pointer-events:none}
+.stn{cursor:pointer}
+.stn:hover circle.d{stroke:var(--accent);stroke-width:2}
+.hit{stroke:transparent;stroke-width:13;cursor:pointer;fill:none}
+.axt{font-size:10px;fill:var(--muted)}
+.axl{font-size:10px;fill:var(--fg-2)}
+@media (max-width:900px){
+  .grid2,.kit,.race{grid-template-columns:1fr}
+  .ctl{position:static}
+  .mapbox svg{max-height:none}
+}
+@media (max-width:520px){
+  .cols{grid-template-columns:1fr}
+  .bar{grid-template-columns:90px minmax(0,1fr) 56px}
+  h1{font-size:25px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>SafeRoute</h1>
+      <p class="sub">Fastest versus safest railway routing, built from core data structures and algorithms: graph, heap, Dijkstra, A*, Yen, Tarjan, Union-Find. No graph library.</p>
+    </div>
+    <button class="btn" id="theme" type="button">Switch theme</button>
+  </header>
+
+  <section class="ctl" id="ctl" aria-label="Route controls">
+    <div class="f"><label for="from">From</label><select id="from"></select></div>
+    <button class="btn" id="swap" type="button" aria-label="Swap origin and destination">&#8644;</button>
+    <div class="f"><label for="to">To</label><select id="to"></select></div>
+    <fieldset class="f" id="scen"><legend>Conditions</legend><div class="seg" id="segs"></div></fieldset>
+    <div class="f lam"><label for="lam">Safety weight &lambda; <output id="lamout"></output></label><input type="range" id="lam" min="0" max="6" step="0.1" value="1.5" aria-describedby="lamhelp">
+      <div class="ends" id="lamhelp"><span>Fastest</span><span class="fm">cost = time &times; (1 + &lambda; &times; risk)</span><span>Safest</span></div></div>
+    <div class="presets" id="presets"></div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Workspaces">
+    <button role="tab" id="t-lab" aria-selected="true" aria-controls="p-lab" data-tab="lab" type="button">Route Lab</button>
+    <button role="tab" id="t-race" aria-selected="false" aria-controls="p-race" data-tab="race" type="button">Algorithm Race</button>
+    <button role="tab" id="t-res" aria-selected="false" aria-controls="p-res" data-tab="res" type="button">Resilience</button>
+    <button role="tab" id="t-ver" aria-selected="false" aria-controls="p-ver" data-tab="ver" type="button">Verify &amp; Benchmark</button>
+    <button role="tab" id="t-kit" aria-selected="false" aria-controls="p-kit" data-tab="kit" type="button">Pitch Kit</button>
+  </nav>
+
+  <section id="p-lab" role="tabpanel" aria-labelledby="t-lab">
+    <div class="grid2">
+      <div class="card mapbox"><div id="m-lab"></div><div class="legend" id="lg-lab"></div><p class="hint" id="hint-lab"></p></div>
+      <div class="stack">
+        <div class="card" id="lab-sum"></div>
+        <div class="card" id="lab-alts"></div>
+        <div class="card" id="lab-curve"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="p-race" role="tabpanel" aria-labelledby="t-race" hidden>
+    <div class="card">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Dijkstra vs A*: same trip, same cost, different effort</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label class="lab-t" for="spd">Speed</label>
+          <select id="spd" style="min-width:90px"><option value="0.5">Slow</option><option value="1" selected>Normal</option><option value="2.5">Fast</option></select>
+          <button class="btn primary" id="runrace" type="button">Replay race</button>
+        </div>
+      </div>
+      <div class="race">
+        <div class="mapbox"><h3>Dijkstra <span style="color:var(--muted);font-weight:400">explores in all directions</span></h3><div id="m-dj"></div><div class="ctr" id="c-dj"></div></div>
+        <div class="mapbox"><h3>A* <span style="color:var(--muted);font-weight:400">is pulled toward the goal by a heuristic</span></h3><div id="m-as"></div><div class="ctr" id="c-as"></div></div>
+      </div>
+      <p class="hint" id="race-sum"></p>
+      <div class="legend"><span class="key"><i style="border-top-color:var(--visit)"></i>stations expanded (number = order)</span><span class="key"><i></i>final route</span></div>
+    </div>
+  </section>
+
+  <section id="p-res" role="tabpanel" aria-labelledby="t-res" hidden>
+    <div class="grid2">
+      <div class="card mapbox"><div id="m-res"></div>
+        <div class="legend"><span class="key"><i class="b"></i>bridge track (single point of failure)</span><span class="key"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--crit)" stroke-width="2"/></svg>articulation station</span></div>
+        <p class="hint">Click any track to block it. Union-Find then recounts connected networks and the route lab reroutes.</p></div>
+      <div class="stack">
+        <div class="card" id="res-status"></div>
+        <div class="card" id="res-bridges"></div>
+        <div class="card" id="res-ap"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="p-ver" role="tabpanel" aria-labelledby="t-ver" hidden>
+    <div class="grid2">
+      <div class="card"><h2>Self-tests</h2><div id="tests"></div><div style="margin-top:12px"><button class="btn" id="rerun" type="button">Run tests again</button></div></div>
+      <div class="stack">
+        <div class="card"><h2>All-pairs benchmark</h2><p style="margin:0 0 10px;color:var(--fg-2)">Every station pair, using the current conditions and &lambda;. Counts are measured, not estimated.</p><button class="btn primary" id="runbench" type="button">Run benchmark</button><div id="bench" style="margin-top:12px"></div></div>
+        <div class="card"><h2>Complexity</h2><div class="tbl"><table>
+          <tr><th>Piece</th><th>Time</th><th>Space</th></tr>
+          <tr><td>BFS (fewest stops)</td><td class="n">O(V+E)</td><td class="n">O(V)</td></tr>
+          <tr><td>Dijkstra, binary heap</td><td class="n">O((V+E) log V)</td><td class="n">O(V+E)</td></tr>
+          <tr><td>A*, consistent heuristic</td><td class="n">same worst case, fewer nodes</td><td class="n">O(V+E)</td></tr>
+          <tr><td>Yen's K paths</td><td class="n">O(K·V·(E+V log V))</td><td class="n">O(K·V)</td></tr>
+          <tr><td>Tarjan bridges and articulation points</td><td class="n">O(V+E)</td><td class="n">O(V)</td></tr>
+          <tr><td>Union-Find</td><td class="n">O(&alpha;(n)) per op</td><td class="n">O(V)</td></tr>
+        </table></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="p-kit" role="tabpanel" aria-labelledby="t-kit" hidden>
+    <div class="kit">
+      <div class="stack">
+        <div class="card"><h2>Five-minute script</h2><div id="beats"></div></div>
+        <div class="card"><h2>Where each DSA idea lives</h2><div class="tbl"><table>
+          <tr><th>Idea</th><th>In the code</th><th>Why it is here</th></tr>
+          <tr><td>Graph, adjacency list</td><td><code>adj</code>, <code>E</code></td><td>Stations are nodes, tracks are weighted edges</td></tr>
+          <tr><td>Min-heap</td><td><code>MinHeap</code></td><td>Pick the cheapest frontier node in O(log n)</td></tr>
+          <tr><td>Dijkstra / A*</td><td><code>search()</code></td><td>One function; A* is Dijkstra plus a heuristic</td></tr>
+          <tr><td>BFS</td><td><code>bfs()</code></td><td>Fewest-stops baseline</td></tr>
+          <tr><td>K shortest paths</td><td><code>yen()</code></td><td>Ranked alternatives when the best route is blocked</td></tr>
+          <tr><td>Bridges, articulation</td><td><code>tarjan()</code></td><td>Find tracks and stations whose loss splits the network</td></tr>
+          <tr><td>Union-Find</td><td><code>DSU</code></td><td>Count connected networks after disruptions</td></tr>
+          <tr><td>Oracle testing</td><td><code>bf()</code>, <code>runTests()</code></td><td>Bellman-Ford and brute force check the fast algorithms</td></tr>
+        </table></div></div>
+      </div>
+      <div class="stack">
+        <div class="note"><strong>Say this upfront</strong>
+          <ul>
+            <li>The rail network is a simplified schematic of major junctions. Distances are straight-line distance &times; 1.22, and speeds are class averages. They are not timetable data.</li>
+            <li>Risk scores are synthetic: a seeded base value per track, multiplied by region and season. The router accepts any risk source, which is the point.</li>
+            <li>The certificate lists no syllabus, so say "DSA concepts applied", not "the course covered X".</li>
+            <li>Keep any safety motivation general. Do not describe an unfiled invention in a public talk.</li>
+            <li>If asked how it was built: you designed the problem and the model, built it with AI assistance, and verified it with the test suite. Be ready to walk through the five functions in the table.</li>
+          </ul></div>
+        <div class="card"><h2>Likely questions</h2><div id="qa"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Applies the DSA concepts from the Board Infinity Summer Training in Data Structures and Algorithms (July 2026, certificate BI20260804). Built by Ravgun Kaur. The network, speeds and risk scores are illustrative, not real timetable or hazard data.</footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+/* ---------- Data ---------- */
+const ST=[
+['NDLS','Delhi',28.64,77.22],['JP','Jaipur',26.92,75.79],['ADI','Ahmedabad',23.03,72.58],['BCT','Mumbai',18.97,72.82],
+['PUNE','Pune',18.53,73.87],['ST','Surat',21.2,72.83],['BRC','Vadodara',22.31,73.18],['BPL','Bhopal',23.26,77.41],
+['NGP','Nagpur',21.15,79.09],['SC','Hyderabad',17.44,78.5],['SBC','Bengaluru',12.98,77.57],['MAS','Chennai',13.08,80.27],
+['ERS','Kochi',9.97,76.29],['TVC','Thiruvananthapuram',8.49,76.95],['BZA','Vijayawada',16.52,80.62],['VSKP','Visakhapatnam',17.72,83.3],
+['BBS','Bhubaneswar',20.27,85.84],['HWH','Kolkata',22.58,88.34],['PNBE','Patna',25.6,85.14],['LKO','Lucknow',26.85,80.92],
+['AGC','Agra',27.18,78.01],['BSB','Varanasi',25.32,83.0],['PRYJ','Prayagraj',25.43,81.84],['GHY','Guwahati',26.18,91.75],
+['ASR','Amritsar',31.63,74.87],['CDG','Chandigarh',30.73,76.78],['JU','Jodhpur',26.29,73.02],['KOTA','Kota',25.18,75.84],
+['ET','Itarsi',22.61,77.76],['R','Raipur',21.25,81.63],['JBP','Jabalpur',23.18,79.95],['MDU','Madurai',9.92,78.12],
+['CBE','Coimbatore',11.0,76.96],['MAQ','Mangaluru',12.91,74.86],['MAO','Madgaon (Goa)',15.27,73.96],['GWL','Gwalior',26.22,78.18],
+['RNC','Ranchi',23.34,85.31],['JAT','Jammu',32.73,74.87]
+];
+const N=ST.length, CODE={}; ST.forEach((s,i)=>CODE[s[0]]=i);
+// class: T trunk (fast), R regular, G ghat / hill section (slow)
+const RAW=[
+['NDLS','AGC','T'],['NDLS','JP','T'],['NDLS','CDG','R'],['NDLS','LKO','R'],['NDLS','ASR','T'],['NDLS','KOTA','T'],['NDLS','PRYJ','T'],
+['AGC','GWL','T'],['GWL','BPL','T'],['AGC','KOTA','R'],['KOTA','BPL','R'],['KOTA','BRC','R'],['KOTA','JP','R'],
+['JP','ADI','R'],['JP','JU','R'],['JU','ADI','R'],['ADI','BRC','T'],['BRC','ST','T'],['ST','BCT','T'],['BCT','PUNE','R'],
+['BCT','ET','T'],['ET','BPL','T'],['ET','NGP','T'],['ET','JBP','R'],['PUNE','SC','R'],['PUNE','SBC','R'],['PUNE','MAO','G'],
+['BCT','MAO','G'],['MAO','MAQ','G'],['MAQ','SBC','G'],['MAQ','ERS','G'],['SBC','MAS','T'],['SBC','CBE','R'],['SBC','SC','R'],
+['CBE','ERS','G'],['CBE','MDU','R'],['ERS','TVC','G'],['MDU','TVC','G'],['MAS','MDU','R'],['MAS','BZA','T'],['BZA','SC','R'],
+['BZA','VSKP','T'],['VSKP','BBS','T'],['BBS','HWH','T'],['BBS','R','R'],['NGP','R','T'],['NGP','SC','T'],['JBP','PRYJ','R'],
+['PRYJ','BSB','R'],['PRYJ','LKO','R'],['LKO','BSB','R'],['BSB','PNBE','T'],['PNBE','HWH','T'],['PNBE','RNC','R'],['RNC','HWH','R'],
+['HWH','GHY','R'],['PNBE','GHY','R'],['ASR','CDG','R'],['ASR','JAT','G']
+];
+const SPEED={T:85,R:65,G:50}, VMAX=85, CIRC=1.22;
+function hav(la1,lo1,la2,lo2){const R=6371,r=Math.PI/180,dLa=(la2-la1)*r,dLo=(lo2-lo1)*r;
+  const a=Math.sin(dLa/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(a));}
+const HV=ST.map(a=>ST.map(b=>hav(a[2],a[3],b[2],b[3])));
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd=rng(20260702);
+const E=RAW.map(([a,b,c])=>{
+  const A=CODE[a],B=CODE[b]; if(A===undefined||B===undefined) throw new Error('bad edge '+a+'-'+b);
+  const dist=Math.round(HV[A][B]*CIRC), speed=SPEED[c];
+  return {a:A,b:B,cls:c,dist,speed,time:dist/speed,base:0.08+0.32*rnd()+(c==='G'?0.12:0),
+          mid:{lat:(ST[A][2]+ST[B][2])/2,lon:(ST[A][3]+ST[B][3])/2},r:0};
+});
+const adj=Array.from({length:N},()=>[]);
+E.forEach((e,i)=>{adj[e.a].push({v:e.b,e:i});adj[e.b].push({v:e.a,e:i});});
+const SCEN={
+  normal:{label:'Normal',f:()=>1},
+  monsoon:{label:'Monsoon',f:(m,e)=>(e.cls==='G'?2.4:1)*((m.lat>19&&m.lat<27&&m.lon>83)?2.0:1)*((m.lat<22&&m.lon>78&&m.lon<85)?1.6:1)},
+  fog:{label:'Winter fog',f:(m)=>(m.lat>24.5&&m.lon<89)?2.6:1},
+  heat:{label:'Summer heat',f:(m)=>(m.lat>20.5&&m.lat<29&&m.lon<80)?2.2:1}
+};
+function applyScenario(k){E.forEach(e=>{e.r=Math.min(0.95,e.base*SCEN[k].f(e.mid,e));});}
+const edgeCost=(i,lam)=>E[i].time*(1+lam*E[i].r);
+
+/* ---------- Algorithms ---------- */
+class MinHeap{
+  constructor(){this.k=[];this.v=[];}
+  get size(){return this.k.length;}
+  push(key,val){const k=this.k,v=this.v;let i=k.length;k.push(key);v.push(val);
+    while(i>0){const p=(i-1)>>1;if(k[p]<=key)break;k[i]=k[p];v[i]=v[p];i=p;}k[i]=key;v[i]=val;}
+  pop(){const k=this.k,v=this.v,tk=k[0],tv=v[0],lk=k.pop(),lv=v.pop(),n=k.length;
+    if(n>0){let i=0;for(;;){let c=2*i+1;if(c>=n)break;if(c+1<n&&k[c+1]<k[c])c++;if(k[c]>=lk)break;k[i]=k[c];v[i]=v[c];i=c;}k[i]=lk;v[i]=lv;}
+    return [tk,tv];}
+}
+// Dijkstra when useH is false; A* when true. Heuristic: great-circle distance / top speed.
+function search(s,t,o){
+  const lam=o.lambda||0, dist=new Array(N).fill(Infinity), prev=new Array(N).fill(-1), prevE=new Array(N).fill(-1), done=new Array(N).fill(false);
+  const h=o.useH?(u=>HV[u][t]/VMAX):(()=>0);
+  const heap=new MinHeap(), order=[]; dist[s]=0; heap.push(h(s),s); let pushes=1, relax=0;
+  while(heap.size){
+    const u=heap.pop()[1]; if(done[u])continue; done[u]=true; order.push(u); if(u===t)break;
+    for(const {v,e} of adj[u]){
+      if(o.blocked&&o.blocked.has(e))continue; if(o.bannedE&&o.bannedE.has(e))continue; if(o.bannedN&&o.bannedN.has(v))continue;
+      if(done[v])continue; const nd=dist[u]+edgeCost(e,lam); relax++;
+      if(nd<dist[v]){dist[v]=nd;prev[v]=u;prevE[v]=e;heap.push(nd+h(v),v);pushes++;}
+    }
+  }
+  if(dist[t]===Infinity)return {found:false,order,pushes,relax,path:[],edges:[],cost:Infinity};
+  const path=[t],edges=[];for(let v=t;v!==s;v=prev[v]){edges.push(prevE[v]);path.push(prev[v]);}
+  path.reverse();edges.reverse();return {found:true,order,pushes,relax,path,edges,cost:dist[t]};
+}
+function bfs(s,t,blocked){
+  const prev=new Array(N).fill(-1),prevE=new Array(N).fill(-1),seen=new Array(N).fill(false),q=[s],order=[];seen[s]=true;let pushes=1;
+  for(let qi=0;qi<q.length;qi++){const u=q[qi];order.push(u);if(u===t)break;
+    for(const {v,e} of adj[u]){if(blocked&&blocked.has(e))continue;if(!seen[v]){seen[v]=true;prev[v]=u;prevE[v]=e;q.push(v);pushes++;}}}
+  if(!seen[t])return {found:false,order,pushes,path:[],edges:[]};
+  const path=[t],edges=[];for(let v=t;v!==s;v=prev[v]){edges.push(prevE[v]);path.push(prev[v]);}
+  path.reverse();edges.reverse();return {found:true,order,pushes,path,edges};
+}
+const sameArr=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
+const sumCost=(edges,lam)=>edges.reduce((s,e)=>s+edgeCost(e,lam),0);
+function yen(s,t,K,lam,blocked){
+  const first=search(s,t,{useH:true,lambda:lam,blocked});if(!first.found)return [];
+  const A=[first],B=[];
+  for(let k=1;k<K;k++){
+    const last=A[k-1];
+    for(let i=0;i<last.path.length-1;i++){
+      const spur=last.path[i],rootN=last.path.slice(0,i+1),rootE=last.edges.slice(0,i),bannedE=new Set(),bannedN=new Set();
+      for(const p of A){if(p.path.length>i+1&&sameArr(p.path.slice(0,i+1),rootN))bannedE.add(p.edges[i]);}
+      rootN.slice(0,-1).forEach(x=>bannedN.add(x));
+      const sp=search(spur,t,{useH:true,lambda:lam,blocked,bannedE,bannedN});
+      if(sp.found){const nodes=rootN.slice(0,-1).concat(sp.path),edges=rootE.concat(sp.edges);
+        if(!B.some(b=>sameArr(b.path,nodes))&&!A.some(a=>sameArr(a.path,nodes)))B.push({found:true,path:nodes,edges,cost:sumCost(edges,lam)});}
+    }
+    if(!B.length)break;B.sort((x,y)=>x.cost-y.cost);A.push(B.shift());
+  }
+  return A;
+}
+function tarjan(blocked){
+  const disc=new Array(N).fill(-1),low=new Array(N).fill(0),bridges=[],ap=new Set();let t=0;
+  function dfs(u,pe){disc[u]=low[u]=t++;let ch=0;
+    for(const {v,e} of adj[u]){if(blocked.has(e)||e===pe)continue;
+      if(disc[v]===-1){ch++;dfs(v,e);low[u]=Math.min(low[u],low[v]);
+        if(low[v]>disc[u])bridges.push(e);
+        if(pe===-1){if(ch>1)ap.add(u);}else if(low[v]>=disc[u])ap.add(u);
+      }else low[u]=Math.min(low[u],disc[v]);}}
+  for(let u=0;u<N;u++)if(disc[u]===-1)dfs(u,-1);
+  return {bridges:bridges.sort((a,b)=>a-b),ap:[...ap].sort((a,b)=>a-b)};
+}
+class DSU{
+  constructor(n){this.p=Array.from({length:n},(_,i)=>i);this.sz=new Array(n).fill(1);}
+  find(x){while(this.p[x]!==x){this.p[x]=this.p[this.p[x]];x=this.p[x];}return x;}
+  union(a,b){a=this.find(a);b=this.find(b);if(a===b)return false;if(this.sz[a]<this.sz[b])[a,b]=[b,a];this.p[b]=a;this.sz[a]+=this.sz[b];return true;}
+}
+function components(blocked,skipE,skipN){
+  const d=new DSU(N);E.forEach((e,i)=>{if(blocked.has(i)||i===skipE||e.a===skipN||e.b===skipN)return;d.union(e.a,e.b);});
+  const m=new Map();for(let v=0;v<N;v++){if(v===skipN)continue;const r=d.find(v);if(!m.has(r))m.set(r,[]);m.get(r).push(v);}
+  return [...m.values()].sort((a,b)=>b.length-a.length);
+}
+function bf(src,costFn,blocked){
+  const d=new Array(N).fill(Infinity);d[src]=0;
+  for(let it=0;it<N-1;it++){let ch=false;
+    for(let i=0;i<E.length;i++){if(blocked&&blocked.has(i))continue;const c=costFn(i),e=E[i];
+      if(d[e.a]+c<d[e.b]-1e-12){d[e.b]=d[e.a]+c;ch=true;}
+      if(d[e.b]+c<d[e.a]-1e-12){d[e.a]=d[e.b]+c;ch=true;}}
+    if(!ch)break;}
+  return d;
+}
+function stats(edges){
+  let km=0,h=0,rh=0;edges.forEach(i=>{const e=E[i];km+=e.dist;h+=e.time;rh+=e.time*e.r;});
+  return {km,h,risk:h?rh/h*100:0,hops:edges.length};
+}
+
+/* ---------- State ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const PRESETS=[
+ {label:'Patna → Guwahati · fog',f:'PNBE',t:'GHY',s:'fog',l:1.5},
+ {label:'Bhubaneswar → Agra · monsoon',f:'BBS',t:'AGC',s:'monsoon',l:1.5},
+ {label:'Agra → Jabalpur · heat',f:'AGC',t:'JBP',s:'heat',l:1.5},
+ {label:'Delhi → Thiruvananthapuram · monsoon',f:'NDLS',t:'TVC',s:'monsoon',l:1.5}
+];
+const state={from:CODE.PNBE,to:CODE.GHY,scen:'fog',lam:1.5,blocked:new Set(),tab:'lab',alt:0,pick:'from'};
+let benchRes=null, tests=null;
+const fmtH=h=>{const m=Math.round(h*60);return Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m';};
+const band=r=>r<22?'good':r<38?'warn':'crit';
+const bandTxt=r=>r<22?'Low':r<38?'Moderate':'High';
+const nm=i=>ST[i][1];
+const riskColor=r=>'hsl('+Math.round(135-135*Math.min(1,r/0.9))+' 65% 46%)';
+
+/* ---------- Map drawing ---------- */
+const P=ST.map(s=>[30+(s[3]-67.5)*20.4,30+(33.5-s[2])*21.7]);
+const WEST=new Set(['ADI','ST','BCT','MAO','MAQ','ERS','JU','ASR','JAT','CDG','JP','TVC','PRYJ']);
+const BELOW=new Set(['BSB']);
+function mapSVG(o){
+  let s='<svg viewBox="0 0 620 610" role="img" aria-label="'+(o.label||'Railway network map')+'">';
+  for(let la=10;la<=30;la+=5){const y=30+(33.5-la)*21.7;s+='<line x1="10" x2="610" y1="'+y+'" y2="'+y+'" stroke="var(--line)" stroke-width=".6"/><text class="axt" x="12" y="'+(y-3)+'">'+la+'°N</text>';}
+  for(let lo=70;lo<=90;lo+=5){const x=30+(lo-67.5)*20.4;s+='<line y1="10" y2="595" x1="'+x+'" x2="'+x+'" stroke="var(--line)" stroke-width=".6"/><text class="axt" x="'+(x+3)+'" y="604">'+lo+'°E</text>';}
+  E.forEach((e,i)=>{
+    const [x1,y1]=P[e.a],[x2,y2]=P[e.b],bl=state.blocked.has(i);let stroke,w=1.6+2.8*e.r,op=.85,dash='';
+    if(bl){stroke='var(--muted)';dash='3 4';op=.9;w=2;}
+    else if(o.edgeMode==='risk')stroke=riskColor(e.r);else{stroke='var(--edge)';w=2;}
+    if(o.bridges&&o.bridges.has(i)&&!bl){stroke='var(--crit)';w=4.5;op=1;}
+    s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+stroke+'" stroke-width="'+w+'" stroke-opacity="'+op+'" stroke-linecap="round"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';
+  });
+  (o.routes||[]).forEach(r=>{
+    if(!r)return;
+    r.edges.forEach(i=>{const e=E[i],[x1,y1]=P[e.a],[x2,y2]=P[e.b];
+      if(r.dashed)s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="var(--fg)" stroke-width="2.5" stroke-dasharray="6 5" stroke-linecap="round"/>';
+      else s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="var(--surface)" stroke-width="10" stroke-linecap="round"/><line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="var(--route)" stroke-width="5" stroke-linecap="round"/>';});
+  });
+  E.forEach((e,i)=>{const [x1,y1]=P[e.a],[x2,y2]=P[e.b];
+    s+='<line class="hit" data-e="'+i+'" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"><title>'+ST[e.a][1]+' to '+ST[e.b][1]+' · '+e.dist+' km · risk '+Math.round(e.r*100)+(state.blocked.has(i)?' · BLOCKED (click to restore)':' · click to block')+'</title></line>';
+    if(state.blocked.has(i))s+='<text x="'+((x1+x2)/2)+'" y="'+((y1+y2)/2+5)+'" text-anchor="middle" font-size="16" font-weight="700" fill="var(--crit)" style="pointer-events:none">×</text>';});
+  const vis=o.visited||new Set();
+  ST.forEach((st,i)=>{
+    const [x,y]=P[i],isF=i===state.from,isT=i===state.to,v=vis.has(i);
+    let r=4.5,fill='var(--surface)',stroke='var(--fg-2)',sw=1.8;
+    if(v){r=8;fill='var(--visit)';stroke='var(--visit)';}
+    if(o.ap&&o.ap.has(i)){stroke='var(--crit)';sw=3;r=5.5;}
+    s+='<g class="stn" data-st="'+i+'" tabindex="0" role="button" aria-label="'+st[1]+'"><title>'+st[1]+' ('+st[0]+')</title>';
+    if(isF)s+='<circle cx="'+x+'" cy="'+y+'" r="11" fill="none" stroke="var(--good)" stroke-width="3"/>';
+    if(isT)s+='<circle cx="'+x+'" cy="'+y+'" r="11" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="4 3"/>';
+    s+='<circle class="d" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    const w=WEST.has(st[0]),named=o.named&&o.named.has(i),txt=named?st[1]:st[0],cl='lbl'+(named?' nm':''),off=v?12:9;
+    if(v&&o.order&&o.order[i]!==undefined)s+='<text class="ord" x="'+x+'" y="'+(y+3)+'" text-anchor="middle">'+o.order[i]+'</text>';
+    if(BELOW.has(st[0]))s+='<text class="'+cl+'" x="'+x+'" y="'+(y+18)+'" text-anchor="middle">'+txt+'</text></g>';
+    else s+='<text class="'+cl+'" x="'+(w?x-off:x+off)+'" y="'+(y+4)+'" text-anchor="'+(w?'end':'start')+'">'+txt+'</text></g>';
+  });
+  return s+'</svg>';
+}
+function wireMap(el){
+  el.addEventListener('click',ev=>{
+    const g=ev.target.closest('[data-st]');if(g){pickStation(+g.dataset.st);return;}
+    const l=ev.target.closest('[data-e]');if(l)toggleBlock(+l.dataset.e);
+  });
+  el.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){const g=ev.target.closest('[data-st]');if(g){ev.preventDefault();pickStation(+g.dataset.st);}}});
+}
+function pickStation(i){if(state.pick==='from'){state.from=i;state.pick='to';}else{state.to=i;state.pick='from';}state.alt=0;sync();renderAll();}
+function toggleBlock(i){if(state.blocked.has(i))state.blocked.delete(i);else state.blocked.add(i);state.alt=0;renderAll();}
+
+/* ---------- Charts ---------- */
+function niceTicks(lo,hi,n){const span=hi-lo||1,s0=span/n,mag=Math.pow(10,Math.floor(Math.log10(s0))),nr=s0/mag,step=(nr<1.5?1:nr<3?2:nr<7?5:10)*mag,t=[];
+  for(let v=Math.ceil(lo/step)*step;v<=hi+1e-9;v+=step)t.push(+v.toFixed(6));return t;}
+function curveSVG(pts,sel){
+  const W=380,H=210,L=44,R=14,T=14,B=36;
+  let x0=Math.min(...pts.map(p=>p.x)),x1=Math.max(...pts.map(p=>p.x)),y0=Math.min(...pts.map(p=>p.y)),y1=Math.max(...pts.map(p=>p.y));
+  const px=(x1-x0)*0.12||1,py=(y1-y0)*0.15||2;x0-=px;x1+=px;y0=Math.max(0,y0-py);y1+=py;
+  const X=v=>L+(v-x0)/(x1-x0)*(W-L-R),Y=v=>H-B-(v-y0)/(y1-y0)*(H-B-T);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Trade-off curve of travel time against risk" style="width:100%;height:auto;display:block">';
+  niceTicks(y0,y1,4).forEach(v=>{s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text class="axt" x="'+(L-6)+'" y="'+(Y(v)+3)+'" text-anchor="end">'+Math.round(v)+'</text>';});
+  niceTicks(x0,x1,5).forEach(v=>{s+='<line y1="'+T+'" y2="'+(H-B)+'" x1="'+X(v)+'" x2="'+X(v)+'" stroke="var(--line)"/><text class="axt" x="'+X(v)+'" y="'+(H-B+14)+'" text-anchor="middle">'+(Math.round(v*10)/10)+'</text>';});
+  s+='<text class="axl" x="'+((L+W-R)/2)+'" y="'+(H-4)+'" text-anchor="middle">Travel time (hours)</text>';
+  s+='<text class="axl" transform="translate(11 '+((T+H-B)/2)+') rotate(-90)" text-anchor="middle">Avg risk score</text>';
+  s+='<polyline fill="none" stroke="var(--edge)" stroke-width="1.5" points="'+pts.map(p=>X(p.x)+','+Y(p.y)).join(' ')+'"/>';
+  pts.forEach(p=>{const on=p.sel;s+='<circle cx="'+X(p.x)+'" cy="'+Y(p.y)+'" r="'+(on?7:4.5)+'" fill="'+(on?'var(--route)':'var(--surface)')+'" stroke="'+(on?'var(--route)':'var(--fg-2)')+'" stroke-width="2"><title>λ ≈ '+p.lam+': '+fmtH(p.x)+', risk '+p.y.toFixed(1)+'</title></circle>';});
+  return s+'</svg>';
+}
+
+/* ---------- Renderers ---------- */
+function laneInfo(){return {from:state.from,to:state.to,same:state.from===state.to};}
+function renderLab(){
+  const {from,to,same}=laneInfo();let html='',alts=[],fast=null,ch=null;
+  if(!same){fast=search(from,to,{useH:true,lambda:0,blocked:state.blocked});if(fast.found)alts=yen(from,to,3,state.lam,state.blocked);}
+  const ai=Math.min(state.alt,Math.max(0,alts.length-1));ch=alts[ai]||null;
+  const sameAsFast=ch&&fast&&sameArr(ch.path,fast.path);
+  const named=new Set([from,to].concat(ch?ch.path:[]).concat(fast&&fast.found?fast.path:[]));
+  $('#m-lab').innerHTML=mapSVG({edgeMode:'risk',named,routes:[fast&&fast.found&&!sameAsFast?{edges:fast.edges,dashed:true}:null,ch?{edges:ch.edges}:null],label:'Route map coloured and sized by risk'});
+  $('#lg-lab').innerHTML='<span>Track risk (colour and thickness)<i class="grad"></i>low to high</span><span class="key"><i></i>selected route</span><span class="key"><i class="d"></i>fastest route</span>';
+  $('#hint-lab').textContent='Click a station to set '+(state.pick==='from'?'From':'To')+' next. Click any track to block it.'+(state.blocked.size?' '+state.blocked.size+' track(s) blocked.':'');
+  if(same){$('#lab-sum').innerHTML='<h2>Route</h2><p style="margin:0">Pick two different stations.</p>';$('#lab-alts').innerHTML='';$('#lab-curve').innerHTML='';return;}
+  if(!fast.found){$('#lab-sum').innerHTML='<h2>Route</h2><p style="margin:0"><strong>No route.</strong> The blocked tracks have split the network between '+nm(from)+' and '+nm(to)+'. Click a blocked track on the map to restore it.</p>';$('#lab-alts').innerHTML='';$('#lab-curve').innerHTML='';return;}
+  const fs=stats(fast.edges),cs=stats(ch.edges);
+  const card=(t,s,sel,p)=>'<div class="rt'+(sel?' sel':'')+'"><h3>'+t+'</h3>'+
+    '<div class="m"><span>Distance</span><span>'+Math.round(s.km)+' km</span></div>'+
+    '<div class="m"><span>Travel time</span><span>'+fmtH(s.h)+'</span></div>'+
+    '<div class="m"><span>Risk score</span><span><span class="pill '+band(s.risk)+'">'+s.risk.toFixed(0)+' · '+bandTxt(s.risk)+'</span></span></div>'+
+    '<div class="m"><span>Segments</span><span>'+s.hops+'</span></div></div>';
+  let big,via='';
+  const viaTxt=ch.path.length>2?'via '+ch.path.slice(1,-1).map(nm).join(', '):'direct';
+  if(sameAsFast){big='The fastest route is also <em>the one to take</em>';via=(state.lam===0?'Raise &lambda; to see whether a safer route exists.':'At this &lambda; no safer route is worth the extra time.')+' '+fmtH(cs.h)+', risk '+cs.risk.toFixed(0)+', '+viaTxt+'.';}
+  else{const dt=cs.h-fs.h,dr=(fs.risk-cs.risk)/fs.risk*100;
+    big=dt>=0?'<em>+'+fmtH(dt)+'</em> buys <em>'+Math.abs(dr).toFixed(0)+'% '+(dr>=0?'lower':'higher')+' risk</em>':'<em>'+fmtH(-dt)+' faster</em> and <em>'+Math.abs(dr).toFixed(0)+'% '+(dr>=0?'lower':'higher')+' risk</em>';
+    via='Selected route '+viaTxt+': '+fmtH(cs.h)+', risk '+cs.risk.toFixed(0)+'. Fastest route: '+fmtH(fs.h)+', risk '+fs.risk.toFixed(0)+'.';}
+  const segChips=ch.edges.map(i=>'<button type="button" class="segb" data-block="'+i+'" title="Block this track and reroute"><span>'+nm(E[i].a)+' – '+nm(E[i].b)+'</span><b aria-hidden="true">×</b><span class="sr" style="position:absolute;left:-9999px">block</span></button>').join('');
+  const offChips=[...state.blocked].map(i=>'<button type="button" class="segb off" data-block="'+i+'" title="Restore this track"><span>'+nm(E[i].a)+' – '+nm(E[i].b)+'</span><b aria-hidden="true">↺</b><span style="position:absolute;left:-9999px">restore</span></button>').join('');
+  $('#lab-sum').innerHTML='<div class="head" role="status" aria-live="polite"><p class="lab-t" style="margin:0 0 4px">'+nm(from)+' to '+nm(to)+' · '+SCEN[state.scen].label+'</p><p class="big">'+big+'</p><p class="via">'+via+'</p></div>'+
+    '<div class="cols">'+card('Fastest',fs,false)+card(ai===0?'Selected':'Selected (alternative '+(ai+1)+')',cs,true)+'</div>'+
+    '<h3 style="margin:14px 0 6px">What if a track fails? <span style="font-weight:400;color:var(--muted)">Click a segment to block it.</span></h3><div class="segs">'+segChips+'</div>'+
+    (offChips?'<div class="segs" style="margin-top:8px"><span class="lab-t" style="align-self:center">Blocked</span>'+offChips+'<button type="button" class="btn" id="clrlab" style="padding:3px 10px">Restore all</button></div>':'');
+  $('#lab-alts').innerHTML='<h2>Ranked alternatives (Yen, K=3)</h2>'+alts.map((a,i)=>{const s=stats(a.edges);
+    return '<button type="button" class="alt" data-alt="'+i+'" aria-pressed="'+(i===ai)+'"><span class="n">#'+(i+1)+'</span><span class="p">'+a.path.map(x=>ST[x][0]).join(' › ')+'</span><span class="s">'+fmtH(s.h)+' · risk '+s.risk.toFixed(0)+'</span></button>';}).join('');
+  const lams=[0,0.15,0.3,0.6,1,1.5,2.5,4,6],seen=new Map();
+  lams.forEach(l=>{const r=search(from,to,{useH:true,lambda:l,blocked:state.blocked});if(!r.found)return;const k=r.path.join(),s=stats(r.edges);if(!seen.has(k))seen.set(k,{x:s.h,y:s.risk,lam:l,k});});
+  const pts=[...seen.values()],selKey=search(from,to,{useH:true,lambda:state.lam,blocked:state.blocked}).path.join();pts.forEach(p=>p.sel=p.k===selKey);
+  $('#lab-curve').innerHTML='<h2>Time-versus-safety frontier</h2>'+curveSVG(pts)+'<p class="hint">Each dot is a different route that becomes optimal as &lambda; rises. '+(pts.length>1?pts.length+' distinct routes exist for this trip.':'Only one route is optimal for this trip under these conditions.')+'</p>';
+}
+$('#lab-alts').addEventListener('click',ev=>{const b=ev.target.closest('[data-alt]');if(b){state.alt=+b.dataset.alt;renderLab();}});
+$('#lab-sum').addEventListener('click',ev=>{const b=ev.target.closest('[data-block]');if(b){toggleBlock(+b.dataset.block);return;}if(ev.target.closest('#clrlab')){state.blocked.clear();state.alt=0;renderAll();}});
+
+/* race */
+const race={timer:null,i:0,D:null,A:null,max:0};
+function raceSetup(){
+  clearInterval(race.timer);race.timer=null;
+  if(state.from===state.to){race.D=race.A=null;}
+  else{race.D=search(state.from,state.to,{useH:false,lambda:state.lam,blocked:state.blocked});race.A=search(state.from,state.to,{useH:true,lambda:state.lam,blocked:state.blocked});}
+  race.max=race.D?Math.max(race.D.order.length,race.A.order.length):0;race.i=race.max;drawRace();
+}
+function drawRace(){
+  const one=(r,mapId,ctrId)=>{
+    if(!r){$(mapId).innerHTML=mapSVG({edgeMode:'plain'});$(ctrId).innerHTML='Pick two different stations.';return;}
+    const n=Math.min(race.i,r.order.length),done=race.i>=r.order.length;
+    const ord={};r.order.slice(0,n).forEach((v,k)=>{ord[v]=k+1;});
+    $(mapId).innerHTML=mapSVG({edgeMode:'plain',visited:new Set(r.order.slice(0,n)),order:ord,named:done&&r.found?new Set(r.path):null,routes:[done&&r.found?{edges:r.edges}:null]});
+    $(ctrId).innerHTML='<span>Expanded <b>'+n+'</b></span><span>Heap pushes <b>'+(done?r.pushes:'…')+'</b></span><span>'+(done?(r.found?'Cost '+r.cost.toFixed(2):'No route'):'searching…')+'</span>';
+  };
+  one(race.D,'#m-dj','#c-dj');one(race.A,'#m-as','#c-as');
+  if(race.D&&race.i>=race.max){
+    const d=race.D,a=race.A;
+    if(!d.found){$('#race-sum').textContent='No route exists under the current blocks.';return;}
+    const sv=(1-a.order.length/d.order.length)*100,eq=Math.abs(d.cost-a.cost)<1e-9;
+    $('#race-sum').innerHTML='Dijkstra expanded <strong>'+d.order.length+'</strong> stations, A* expanded <strong>'+a.order.length+'</strong>'+(sv>0?' ('+sv.toFixed(0)+'% fewer)':' (no saving on this trip)')+'. Route cost '+(eq?'is identical, as the heuristic is admissible and consistent.':'DIFFERS. Check the heuristic.');
+  }else $('#race-sum').textContent='Both searches run in lockstep, one station expanded per tick.';
+}
+function runRace(){
+  if(!race.D)return;clearInterval(race.timer);
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){race.i=race.max;drawRace();return;}
+  race.i=0;drawRace();const ms=260/(+$('#spd').value||1);
+  race.timer=setInterval(()=>{race.i++;drawRace();if(race.i>=race.max){clearInterval(race.timer);race.timer=null;}},ms);
+}
+
+/* resilience */
+function renderRes(){
+  const tj=tarjan(state.blocked),br=new Set(tj.bridges),ap=new Set(tj.ap),comps=components(state.blocked);
+  $('#m-res').innerHTML=mapSVG({edgeMode:'plain',bridges:br,ap,label:'Network resilience map'});
+  let st='<h2>Network status</h2>';
+  if(comps.length===1)st+='<p style="margin:0"><span class="pill good">Connected</span> All '+N+' stations form one network. '+state.blocked.size+' track(s) blocked.</p>';
+  else st+='<p style="margin:0 0 8px"><span class="pill crit">Split</span> '+comps.length+' separate networks after blocking '+state.blocked.size+' track(s) (counted with Union-Find).</p>'+comps.slice(1).map(c=>'<p style="margin:4px 0;color:var(--fg-2)">Cut off: '+c.map(nm).join(', ')+'</p>').join('');
+  if(state.blocked.size)st+='<p style="margin:10px 0 0"><button class="btn" id="clr" type="button">Restore all tracks</button></p>';
+  $('#res-status').innerHTML=st;
+  const brRows=tj.bridges.map(i=>{const e=E[i],cs=components(state.blocked,i),small=cs[cs.length-1];
+    return '<tr><td>'+nm(e.a)+' – '+nm(e.b)+'</td><td class="n">'+e.dist+' km</td><td>Isolates '+small.map(nm).join(', ')+'</td></tr>';}).join('');
+  $('#res-bridges').innerHTML='<h2>Bridge tracks ('+tj.bridges.length+')</h2>'+(brRows?'<div class="tbl"><table><tr><th>Track</th><th class="n">Length</th><th>If it fails</th></tr>'+brRows+'</table></div>':'<p style="margin:0">None. Every remaining track has a detour.</p>');
+  const apRows=tj.ap.map(v=>{const cs=components(state.blocked,-1,v);return '<tr><td>'+nm(v)+'</td><td class="n">'+(cs.length)+' parts</td></tr>';}).join('');
+  $('#res-ap').innerHTML='<h2>Articulation stations ('+tj.ap.length+')</h2>'+(apRows?'<div class="tbl"><table><tr><th>Station</th><th class="n">Network falls into</th></tr>'+apRows+'</table></div>':'<p style="margin:0">None.</p>');
+  const c=$('#clr');if(c)c.onclick=()=>{state.blocked.clear();state.alt=0;renderAll();};
+}
+
+/* tests */
+function runTests(){
+  const out=[],saveScen=state.scen,EMPTY=new Set(),R=rng(7);
+  const t=(name,fn)=>{const t0=performance.now();let ok=false,msg='';try{const r=fn();ok=!!r.ok;msg=r.msg||'';}catch(err){msg=String(err);}out.push({name,ok,msg,ms:performance.now()-t0});};
+  const pairsAll=[];for(let a=0;a<N;a++)for(let b=a+1;b<N;b++)pairsAll.push([a,b]);
+  t('Min-heap pops 5,000 random keys in sorted order',()=>{const h=new MinHeap(),ks=[];for(let i=0;i<5000;i++){const k=Math.floor(R()*1e6);ks.push(k);h.push(k,i);}
+    ks.sort((a,b)=>a-b);for(let i=0;i<ks.length;i++)if(h.pop()[0]!==ks[i])return {ok:false,msg:'out of order at '+i};return {ok:true,msg:'5,000 of 5,000 correct'};});
+  t('Dijkstra matches the Bellman-Ford oracle on every pair',()=>{let n=0;
+    for(const sc of Object.keys(SCEN)){applyScenario(sc);for(const lam of [0,1.5,5]){for(let s=0;s<N;s++){const d=bf(s,i=>edgeCost(i,lam),null);
+      for(let u=s+1;u<N;u++){const r=search(s,u,{useH:false,lambda:lam});n++;if(Math.abs(r.cost-d[u])>1e-9)return {ok:false,msg:'mismatch '+ST[s][0]+'-'+ST[u][0]};}}}}
+    return {ok:true,msg:n.toLocaleString()+' pair checks across 4 conditions and 3 λ values'};});
+  t('A* returns the same cost as Dijkstra on every pair',()=>{let n=0;
+    for(const sc of Object.keys(SCEN)){applyScenario(sc);for(const lam of [0,1.5,5]){for(const [a,b] of pairsAll){const d=search(a,b,{useH:false,lambda:lam}),x=search(a,b,{useH:true,lambda:lam});n++;
+      if(Math.abs(d.cost-x.cost)>1e-9)return {ok:false,msg:'mismatch '+ST[a][0]+'-'+ST[b][0]};}}}
+    return {ok:true,msg:n.toLocaleString()+' comparisons, 0 mismatches'};});
+  t('Blocked tracks are never used, and costs still match the oracle',()=>{applyScenario('monsoon');let n=0;
+    for(let k=0;k<60;k++){const bl=new Set();for(let j=0;j<3+Math.floor(R()*5);j++)bl.add(Math.floor(R()*E.length));
+      const s=Math.floor(R()*N),u=Math.floor(R()*N);if(s===u)continue;const d=bf(s,i=>edgeCost(i,1.5),bl),r=search(s,u,{useH:true,lambda:1.5,blocked:bl});n++;
+      if(d[u]===Infinity){if(r.found)return {ok:false,msg:'found a route through a cut'};continue;}
+      if(!r.found||Math.abs(r.cost-d[u])>1e-9||r.edges.some(e=>bl.has(e)))return {ok:false,msg:'bad route on trial '+k};}
+    return {ok:true,msg:n+' random block sets'};});
+  t('BFS finds the minimum number of stops',()=>{let n=0;for(const [a,b] of pairsAll){const d=bf(a,()=>1,null),r=bfs(a,b,null);n++;if(r.edges.length!==d[b])return {ok:false,msg:'hop mismatch '+ST[a][0]+'-'+ST[b][0]};}
+    return {ok:true,msg:n+' pairs'};});
+  t('Yen paths are loopless, unique, valid and sorted by cost',()=>{applyScenario('monsoon');let n=0;
+    for(let k=0;k<40;k++){const s=Math.floor(R()*N),u=Math.floor(R()*N);if(s===u)continue;const lam=[0,1.5,4][k%3],ps=yen(s,u,5,lam,EMPTY);n++;
+      const best=search(s,u,{useH:false,lambda:lam});if(Math.abs(ps[0].cost-best.cost)>1e-9)return {ok:false,msg:'first path is not optimal'};
+      for(let i=0;i<ps.length;i++){const p=ps[i];if(new Set(p.path).size!==p.path.length)return {ok:false,msg:'loop in path'};
+        if(i>0&&p.cost<ps[i-1].cost-1e-9)return {ok:false,msg:'not sorted'};
+        for(let j=0;j<i;j++)if(sameArr(p.path,ps[j].path))return {ok:false,msg:'duplicate path'};
+        for(let j=0;j<p.path.length-1;j++){const e=E[p.edges[j]];if(!((e.a===p.path[j]&&e.b===p.path[j+1])||(e.b===p.path[j]&&e.a===p.path[j+1])))return {ok:false,msg:'edge mismatch'};}
+        if(Math.abs(sumCost(p.edges,lam)-p.cost)>1e-9)return {ok:false,msg:'cost mismatch'};}}
+    return {ok:true,msg:n+' trips, up to 5 paths each'};});
+  t('Tarjan bridges and articulation points match brute force',()=>{let n=0;
+    for(let k=0;k<25;k++){const bl=new Set();if(k>0)for(let j=0;j<k%6;j++)bl.add(Math.floor(R()*E.length));
+      const tj=tarjan(bl),base=components(bl).length,bb=[],aa=[];
+      for(let i=0;i<E.length;i++){if(bl.has(i))continue;if(components(bl,i).length>base)bb.push(i);}
+      for(let v=0;v<N;v++){const cs=components(bl,-1,v);const iso=adj[v].every(({e})=>bl.has(e));if(cs.length>(iso?base-1:base))aa.push(v);}
+      n++;if(!sameArr(bb,tj.bridges)||!sameArr(aa,tj.ap))return {ok:false,msg:'disagree on trial '+k+' (bridges '+bb.length+' vs '+tj.bridges.length+')'};}
+    return {ok:true,msg:n+' graphs, including random blocked tracks'};});
+  t('Union-Find components match a plain DFS count',()=>{let n=0;
+    for(let k=0;k<30;k++){const bl=new Set();for(let j=0;j<k%9;j++)bl.add(Math.floor(R()*E.length));
+      const seen=new Array(N).fill(false);let c=0;for(let s=0;s<N;s++){if(seen[s])continue;c++;const st=[s];seen[s]=true;while(st.length){const u=st.pop();for(const {v,e} of adj[u])if(!bl.has(e)&&!seen[v]){seen[v]=true;st.push(v);}}}
+      n++;if(components(bl).length!==c)return {ok:false,msg:'count mismatch on trial '+k};}
+    return {ok:true,msg:n+' random graphs'};});
+  applyScenario(saveScen);return out;
+}
+function renderTests(){
+  const ok=tests.filter(x=>x.ok).length;
+  $('#tests').innerHTML='<p style="margin:0 0 6px"><span class="pill '+(ok===tests.length?'good':'crit')+'">'+ok+' of '+tests.length+' passed</span></p>'+
+    tests.map(x=>'<div class="test"><span class="'+(x.ok?'ok':'no')+'">'+(x.ok?'✓':'✗')+'</span><span>'+x.name+'<small>'+x.msg+'</small></span><span class="ms">'+x.ms.toFixed(0)+' ms</span></div>').join('');
+}
+function runBench(){
+  const pairs=[];for(let a=0;a<N;a++)for(let b=a+1;b<N;b++)pairs.push([a,b]);
+  const lam=state.lam,bl=state.blocked,R={d:{e:0,p:0},a:{e:0,p:0},b:{e:0,p:0}};let match=0,fewer=0,same=0,more=0,maxSave=0,used=0;
+  for(const [s,u] of pairs){const d=search(s,u,{useH:false,lambda:lam,blocked:bl}),a=search(s,u,{useH:true,lambda:lam,blocked:bl}),b=bfs(s,u,bl);
+    if(!d.found)continue;used++;R.d.e+=d.order.length;R.d.p+=d.pushes;R.a.e+=a.order.length;R.a.p+=a.pushes;R.b.e+=b.order.length;R.b.p+=b.pushes;
+    if(Math.abs(d.cost-a.cost)<1e-9)match++;const diff=d.order.length-a.order.length;if(diff>0){fewer++;maxSave=Math.max(maxSave,diff/d.order.length);}else if(diff===0)same++;else more++;}
+  const rep=10,tm=f=>{const t0=performance.now();for(let r=0;r<rep;r++)for(const [s,u] of pairs)f(s,u);return (performance.now()-t0)*1000/(rep*pairs.length);};
+  const us={d:tm((s,u)=>search(s,u,{useH:false,lambda:lam,blocked:bl})),a:tm((s,u)=>search(s,u,{useH:true,lambda:lam,blocked:bl})),b:tm((s,u)=>bfs(s,u,bl))};
+  benchRes={used,R,match,fewer,same,more,maxSave,us,total:pairs.length,lam,scen:state.scen};renderBench();
+}
+function renderBench(){
+  const el=$('#bench');if(!benchRes){el.innerHTML='';return;}
+  const b=benchRes,mx=Math.max(b.R.d.e,b.R.a.e,b.R.b.e)/b.used,row=(l,k,c)=>{const v=b.R[k].e/b.used;return '<div class="bar"><span>'+l+'</span><div class="t"><i class="'+c+'" style="width:'+(v/mx*100)+'%"></i></div><span class="v">'+v.toFixed(1)+'</span></div>';};
+  const sv=(1-b.R.a.e/b.R.d.e)*100;
+  el.innerHTML='<h3>Average stations expanded per query</h3>'+row('BFS','b','g')+row('Dijkstra','d','v')+row('A*','a','')+
+   '<div class="tbl" style="margin-top:12px"><table><tr><th>Algorithm</th><th class="n">Heap pushes / query</th><th class="n">Time / query</th></tr>'+
+   '<tr><td>BFS</td><td class="n">'+(b.R.b.p/b.used).toFixed(1)+'</td><td class="n">'+b.us.b.toFixed(1)+' µs</td></tr>'+
+   '<tr><td>Dijkstra</td><td class="n">'+(b.R.d.p/b.used).toFixed(1)+'</td><td class="n">'+b.us.d.toFixed(1)+' µs</td></tr>'+
+   '<tr><td>A*</td><td class="n">'+(b.R.a.p/b.used).toFixed(1)+'</td><td class="n">'+b.us.a.toFixed(1)+' µs</td></tr></table></div>'+
+   '<p style="margin:10px 0 0;color:var(--fg-2)">A* expanded <strong>'+sv.toFixed(1)+'% fewer</strong> stations than Dijkstra over '+b.used+' station pairs. It was lower on '+b.fewer+' pairs, equal on '+b.same+', higher on '+b.more+'. Best single saving: '+(b.maxSave*100).toFixed(0)+'%. Same optimal cost on <strong>'+b.match+' of '+b.used+'</strong> pairs.</p>'+
+   '<p class="hint">Measured at '+SCEN[b.scen].label+', &lambda; = '+b.lam.toFixed(1)+', '+state.blocked.size+' blocked. On a 38-station graph the gap is modest; it grows with network size because Dijkstra expands in every direction.</p>';
+}
+
+/* kit */
+const BEATS=[
+ ['0:00','Hook','"The fastest route and the safest route are often different routes. I built an engine that finds both, using only core data structures and algorithms."'],
+ ['0:30','Model','Stations are nodes, tracks are weighted edges. Cost = time × (1 + λ × risk). One slider, λ, trades time for safety. Say clearly that the network and risk values are illustrative.'],
+ ['1:15','Demo 1: Route Lab','Use the preset Patna to Guwahati in fog. The dashed direct route is fastest, the solid route via Kolkata costs about 4 hours more and cuts average risk by roughly three quarters. Read that sentence under the cards, then point at the frontier chart.'],
+ ['2:15','Demo 2: Algorithm Race','Press Replay. Say: same answer, less work. A* uses straight-line distance as a hint, and it is correct because the hint never overestimates. Read the measured percentages on screen.'],
+ ['3:15','Demo 3: Resilience','Open Resilience. Red tracks are bridges: lose one and the network splits (Amritsar to Jammu is the only one). Then in Route Lab press the Patna – Kolkata chip under "What if a track fails?": the route reroutes via Ranchi and the headline updates. Keys 1 to 5 switch tabs.'],
+ ['4:15','Proof','Open Verify. Eight self-tests, including an independent Bellman-Ford oracle and brute-force checks for Tarjan. The fast algorithms are tested against slow, obviously correct ones.'],
+ ['4:45','Close','Next: real timetable data, a predictive hazard model feeding the risk weights, and speed-ups such as bidirectional search or contraction hierarchies for national scale.']
+];
+const QA=[
+ ['Why Dijkstra and not BFS?','BFS minimises the number of stops. Here edges have different costs, so only a weighted search is correct. BFS is in the app as a baseline.'],
+ ['Why is A* correct here?','Its hint is great-circle distance divided by the top speed. Real track is at least as long as the straight line and no train exceeds the top speed, so the hint never overestimates (admissible). It also obeys the triangle inequality (consistent), so a station is final when first popped. The tests confirm A* equals Dijkstra and Bellman-Ford on every pair.'],
+ ['What is the time complexity of Dijkstra here?','O((V+E) log V) with a binary heap. I use lazy deletion: stale heap entries are skipped when popped, so the heap holds up to E entries and each operation is O(log E) = O(log V).'],
+ ['Why not decrease-key or a Fibonacci heap?','A binary heap has no cheap decrease-key without tracking positions. Pushing duplicates and skipping stale ones is simpler and fast in practice. Fibonacci heaps give O(E + V log V) in theory but are slower on real inputs.'],
+ ['What if risk made an edge cost negative?','It cannot: cost = time × (1 + λ × risk) is at least the travel time, and λ and risk are non-negative. Dijkstra needs non-negative weights. With negative weights I would use Bellman-Ford, which is also my test oracle.'],
+ ['How does Yen\'s algorithm avoid duplicate routes?','For each spur node on the previous best path, it bans the next edge of every accepted path that shares the same root, plus the root nodes, then runs a fresh search from the spur. Candidates are kept in a set and the cheapest is promoted. Complexity O(K·V·(E + V log V)).'],
+ ['How do bridges work?','One DFS records discovery time and a low-link value, the earliest station reachable from a subtree using a back edge. Edge (u,v) is a bridge when low[v] > disc[u]. Articulation point: low[v] ≥ disc[u], or the DFS root with two or more children. O(V+E), checked against brute-force removal.'],
+ ['What is Union-Find doing?','It counts connected networks after tracks are blocked. Union by size and path compression make each operation effectively constant, O(α(n)).'],
+ ['Where does the risk data come from?','In this demo it is synthetic: a seeded base value per track times a region-and-season multiplier. The router only needs a number per edge, so a real weather feed or a predictive model can replace it without changing the algorithms.'],
+ ['How would this scale to the whole national network?','Thousands of stations and time-dependent edges (timetables, so a time-expanded graph). Speed-ups: bidirectional search, ALT landmarks, or contraction hierarchies, which pre-compute shortcuts so queries touch only a few hundred nodes.'],
+ ['What are the limits?','Static graph, no timetables or capacity, undirected tracks, no transfer times, synthetic risk. The point is the algorithmic core and its verification.']
+];
+function renderKit(){
+  $('#beats').innerHTML=BEATS.map(b=>'<div class="beat"><span class="tm">'+b[0]+'</span><div><h3 style="margin:0">'+b[1]+'</h3><p>'+b[2]+'</p></div></div>').join('');
+  $('#qa').innerHTML=QA.map(q=>'<details><summary>'+q[0]+'</summary><p>'+q[1]+'</p></details>').join('');
+}
+
+/* ---------- Wiring ---------- */
+function sync(){$('#from').value=state.from;$('#to').value=state.to;$('#lam').value=state.lam;
+  const l=state.lam;$('#lamout').textContent=l.toFixed(1)+' · '+(l===0?'Fastest':l<1.5?'Balanced':'Safety-first');
+  document.querySelectorAll('#segs input').forEach(i=>i.checked=i.value===state.scen);}
+function renderAll(){
+  applyScenario(state.scen);benchRes=null;renderBench();
+  renderLab();renderRes();raceSetup();
+}
+let raceSeen=false;
+const TABS=['lab','race','res','ver','kit'];
+function setTab(k,focus){
+  state.tab=k;TABS.forEach(x=>{const on=x===k;$('#p-'+x).hidden=!on;const t=$('#t-'+x);t.setAttribute('aria-selected',on);t.tabIndex=on?0:-1;});
+  $('#ctl').hidden=(k==='kit');
+  if(focus)$('#t-'+k).focus();
+  if(k==='race'&&!raceSeen){raceSeen=true;runRace();}
+  try{history.replaceState(null,'','#'+k);}catch(e){}
+}
+function init(){
+  const opts=ST.map((s,i)=>[i,s[1]]).sort((a,b)=>a[1].localeCompare(b[1])).map(([i,n])=>'<option value="'+i+'">'+n+'</option>').join('');
+  $('#from').innerHTML=opts;$('#to').innerHTML=opts;
+  $('#segs').innerHTML=Object.keys(SCEN).map(k=>'<input type="radio" name="scen" id="sc-'+k+'" value="'+k+'"><label for="sc-'+k+'">'+SCEN[k].label+'</label>').join('');
+  $('#from').onchange=e=>{state.from=+e.target.value;state.alt=0;renderAll();};
+  $('#to').onchange=e=>{state.to=+e.target.value;state.alt=0;renderAll();};
+  $('#swap').onclick=()=>{[state.from,state.to]=[state.to,state.from];state.alt=0;sync();renderAll();};
+  $('#segs').onchange=e=>{state.scen=e.target.value;state.alt=0;renderAll();};
+  $('#lam').oninput=e=>{state.lam=+e.target.value;state.alt=0;sync();renderAll();};
+  $('#presets').innerHTML=PRESETS.length?'<span class="lab-t">Demo trips</span>'+PRESETS.map((p,i)=>'<button type="button" class="btn" data-p="'+i+'">'+p.label+'</button>').join(''):'';
+  $('#presets').onclick=e=>{const b=e.target.closest('[data-p]');if(!b)return;const p=PRESETS[+b.dataset.p];state.from=CODE[p.f];state.to=CODE[p.t];state.scen=p.s;state.lam=p.l;state.alt=0;state.blocked.clear();sync();renderAll();};
+  document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+  $('.tabs').addEventListener('keydown',ev=>{const i=TABS.indexOf(state.tab);let n=-1;
+    if(ev.key==='ArrowRight')n=(i+1)%TABS.length;else if(ev.key==='ArrowLeft')n=(i+TABS.length-1)%TABS.length;else if(ev.key==='Home')n=0;else if(ev.key==='End')n=TABS.length-1;
+    if(n>=0){ev.preventDefault();setTab(TABS[n],true);}});
+  document.addEventListener('keydown',ev=>{if(ev.metaKey||ev.ctrlKey||ev.altKey)return;const tg=ev.target.tagName;if(tg==='INPUT'||tg==='SELECT'||tg==='TEXTAREA')return;
+    const n=+ev.key;if(n>=1&&n<=5)setTab(TABS[n-1]);});
+  ['#m-lab','#m-dj','#m-as','#m-res'].forEach(s=>wireMap($(s)));
+  $('#runrace').onclick=runRace;
+  $('#rerun').onclick=()=>{tests=runTests();renderTests();};
+  $('#runbench').onclick=runBench;
+  $('#theme').onclick=()=>{const r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';};
+  renderKit();sync();renderAll();tests=runTests();renderTests();
+  const h=(location.hash||'').slice(1);setTab(TABS.includes(h)?h:'lab');
+  window.__sr={search,yen,tarjan,components,bfs,state,CODE,ST,E,renderAll,runBench,runTests,applyScenario,stats,get benchRes(){return benchRes;},get tests(){return tests;},sync,runRace,race};
+}
+init();
+})();
+</script>
